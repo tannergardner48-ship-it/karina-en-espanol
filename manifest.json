@@ -1,0 +1,33 @@
+{
+  "name": "Karina en Español",
+  "short_name": "Karina",
+  "description": "Lee libros en español y toca cualquier palabra para entenderla en contexto.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#7A2545",
+  "theme_color": "#FBF8F1",
+  "icons": [
+    {
+      "src": "/appicon180v2.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/appicon192v2.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/appicon512v2.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/appiconmask512v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
