@@ -1,9 +1,6 @@
 {
   "books": [
-    {
-      "file": "el-faro-de-punta-serena.epub",
-      "title": "El faro de Punta Serena",
-      "author": "Relato de muestra"
-    }
+    { "file": "el-Alquimista.epub", "title": "El Alquimista", "author": "Paulo Coelho" },
+    { "file": "como-agua.epub", "title": "Como agua para chocolate", "author": "Laura Esquivel" },
   ]
 }
