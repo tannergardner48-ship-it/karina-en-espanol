@@ -300,6 +300,23 @@
   .rel li { font-size:14px; line-height:1.55; margin-bottom:8px; color:var(--ink); }
   .rel li b { color:var(--accent-ink); }
   .rel li.fix::marker { color:var(--warn); }
+  #bundledWrap { padding:0 16px calc(var(--safe-b) + 96px); display:none; }
+  #bundledWrap.show { display:block; }
+  .bundled-h { font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-soft); font-weight:800; margin:6px 2px 9px; }
+  .bundled { display:flex; gap:12px; align-items:center; width:100%; text-align:left;
+    background:transparent; border:1px dashed var(--edge); border-radius:16px;
+    padding:12px 13px; margin-bottom:9px; }
+  .bundled .spine { opacity:.5; }
+  .bundled .book-title { font-size:14.5px; }
+  .bundled .get { font-size:12px; font-weight:800; color:var(--accent); flex:0 0 auto; }
+
+  .bm-snip { font-size:13px; color:var(--ink-soft); line-height:1.5; font-style:italic;
+    margin-top:6px; padding-left:10px; border-left:2px solid var(--accent-wash); }
+  .bm-note { font-size:14px; color:var(--ink); margin-top:8px; }
+  .bm-go { font-size:12px; font-weight:800; color:var(--accent); margin-top:10px; display:inline-block; }
+  .s-cost { margin-top:10px; font-size:11px; color:var(--sheet-dim); opacity:.75;
+    font-variant-numeric:tabular-nums; }
   #toast { position:fixed; left:16px; right:16px; bottom:calc(var(--safe-b) + 22px);
     z-index:60; background:var(--warn-bg); color:var(--warn); border:1px solid #EBD3CB;
     border-radius:12px; padding:12px 14px; font-size:13.5px; line-height:1.45;
@@ -330,12 +347,14 @@
   <div class="shelf-top">
     <div class="shelf-title">Karina<br><span>en español</span></div>
     <div class="top-actions">
+      <button class="icon-btn" id="markListBtn" aria-label="Bookmarks">⚑</button>
       <button class="icon-btn" id="noteBtn" aria-label="Notebook">✦</button>
       <button class="icon-btn" id="nightBtn" aria-label="Toggle night mode">◐</button>
       <button class="icon-btn" id="setBtn" aria-label="Settings">⚙</button>
     </div>
   </div>
   <div class="shelf-list" id="shelfList"></div>
+  <div id="bundledWrap"></div>
   <div class="add-wrap">
     <button class="add-btn" id="addBtn">Add a book</button>
     <input id="fileInput" type="file" accept=".epub,application/epub+zip" />
@@ -347,6 +366,7 @@
   <div class="r-top" id="rTop">
     <button class="icon-btn" id="backBtn" aria-label="Back to shelf">‹</button>
     <div class="r-title" id="rTitle"></div>
+    <button class="icon-btn" id="markBtn" aria-label="Add bookmark">⚑</button>
     <button class="icon-btn" id="transBtn" aria-label="Translate selection">☰</button>
     <button class="icon-btn" id="sizeBtn" aria-label="Text size">Aa</button>
   </div>
@@ -419,6 +439,20 @@
       <div class="help">Tap to see what changed in this and earlier builds.</div>
     </div>
     <div class="field">
+      <label>This session</label>
+      <div class="help" id="spendNow">No lookups yet.</div>
+    </div>
+    <div class="field">
+      <label>Backup</label>
+      <div class="row">
+        <button class="seg" id="bkExport">Save backup</button>
+        <button class="seg" id="bkImport">Restore</button>
+      </div>
+      <input id="bkFile" type="file" accept=".json,application/json" style="display:none" />
+      <div class="help">A backup holds your notebook, bookmarks and reading positions
+        (not the book files). Keep one in Files or email it to yourself.</div>
+    </div>
+    <div class="field">
       <label>Troubleshooting</label>
       <div class="row">
         <button class="seg" id="dbgOff">Debug off</button>
@@ -432,6 +466,14 @@
       <div class="help" id="storageInfo">Checking…</div>
     </div>
   </div>
+</div>
+
+<div class="screen hidden" id="bookmarks">
+  <div class="set-top">
+    <button class="icon-btn" id="bmBack" aria-label="Back">‹</button>
+    <div class="set-h">Marcadores</div>
+  </div>
+  <div class="nb-list" id="bmList"></div>
 </div>
 
 <div class="screen hidden" id="notebook">
@@ -510,6 +552,20 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
 const $ = (id) => document.getElementById(id);
 
+/* rough running cost for this session only — resets when the app restarts */
+const RATES={ 'claude-sonnet-5':{in:2.00,out:10.00}, 'claude-haiku-4-5':{in:1.00,out:5.00} };
+let sessionSpend=0, sessionCalls=0;
+function addSpend(usage, model){
+  try{
+    const r=RATES[model]||RATES['claude-sonnet-5'], u=usage||{};
+    sessionSpend += (u.input_tokens||0)/1e6*r.in + (u.output_tokens||0)/1e6*r.out;
+    sessionCalls++;
+    const el=$('spendNow');
+    if(el) el.textContent=sessionCalls+' lookup'+(sessionCalls===1?'':'s')+
+      ' \u00b7 about $'+sessionSpend.toFixed(4)+' so far. Resets when you reopen the app.';
+  }catch(e){}
+}
+
 /* optional gesture reporting, toggled in Settings — helps diagnose touch issues */
 function DBG(msg){
   try{
@@ -528,7 +584,7 @@ function toast(msg, ms=3600){
 }
 
 function show(screen){
-  ['shelf','reader','settings','notebook','lesson','changelog'].forEach(s=>$(s).classList.toggle('hidden', s!==screen));
+  ['shelf','reader','settings','notebook','lesson','changelog','bookmarks'].forEach(s=>$(s).classList.toggle('hidden', s!==screen));
 }
 
 /* ---------- settings (localStorage) ---------- */
@@ -546,16 +602,17 @@ const S = {
 };
 
 /* ---------- IndexedDB: the library ---------- */
-const DB='lector', STORE='books', NOTES='notes';
+const DB='lector', STORE='books', NOTES='notes', MARKS='marks';
 let dbP=null;
 function db(){
   if(dbP) return dbP;
   dbP=new Promise((res,rej)=>{
-    const r=indexedDB.open(DB,2);
+    const r=indexedDB.open(DB,3);
     r.onupgradeneeded=()=>{
       const d=r.result;
       if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id'});
       if(!d.objectStoreNames.contains(NOTES)) d.createObjectStore(NOTES,{keyPath:'id'});
+      if(!d.objectStoreNames.contains(MARKS)) d.createObjectStore(MARKS,{keyPath:'id'});
     };
     r.onsuccess=()=>res(r.result);
     r.onerror=()=>rej(r.error);
@@ -580,6 +637,10 @@ const allBooks  = ()=>tx('readonly',    st=>st.getAll());
 const putNote   = (rec)=>tx('readwrite', st=>st.put(rec), NOTES);
 const delNote   = (id)=>tx('readwrite', st=>st.delete(id), NOTES);
 const allNotes  = ()=>tx('readonly',    st=>st.getAll(),  NOTES);
+
+const putMark   = (rec)=>tx('readwrite', st=>st.put(rec),   MARKS);
+const delMark   = (id)=>tx('readwrite', st=>st.delete(id),  MARKS);
+const allMarks  = ()=>tx('readonly',    st=>st.getAll(),    MARKS);
 
 /* ---------- shelf rendering ---------- */
 function timeAgo(ts){
@@ -667,7 +728,7 @@ async function addBook(name, buffer){
     toast('<b>Not enough storage on this phone</b> to save that book.');
     return;
   }
-  await renderShelf(); updateStorage();
+  await renderShelf(); loadBundled(); updateStorage();
   openFromShelf(id);
 }
 
@@ -1132,6 +1193,10 @@ async function lookup(text, range, doc){
             '<div class="s-es">'+markPick(ctx.sentence,text)+'</div>'+
             '<div class="s-en">'+esc(out.sentence)+'</div></div>';
     }
+    if(sessionCalls){
+      html+='<div class="s-cost">esta sesi\u00f3n: '+sessionCalls+' \u00b7 ~$'+
+            sessionSpend.toFixed(4)+'</div>';
+    }
     $('sExtra').innerHTML=html;
 
     // offer to keep it — nothing is saved unless you tap
@@ -1216,6 +1281,7 @@ async function translate(text, sentence){
   if(!res.ok) throw new Error('Anthropic error '+res.status+'.');
 
   const data=await res.json();
+  addSpend(data.usage, S.model);
   const raw=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
   try{
     const j=JSON.parse(raw.replace(/^```(?:json)?/,'').replace(/```$/,'').trim());
@@ -1302,6 +1368,7 @@ async function renderNotebook(){
 
   list.querySelectorAll('[data-del]').forEach(x=>{
     x.addEventListener('click',async ()=>{
+      if(!confirm('¿Borrar esta palabra del cuaderno?')) return;
       await delNote(x.getAttribute('data-del')).catch(()=>{});
       renderNotebook();
     });
@@ -1415,6 +1482,7 @@ async function makeLesson(notes){
     if(!res.ok) throw new Error('Anthropic error '+res.status+'.');
 
     const data=await res.json();
+    addSpend(data.usage, S.model);
     let raw=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
     raw=raw.replace(/^```(?:html)?/,'').replace(/```$/,'').trim();
 
@@ -1470,6 +1538,190 @@ $('lsShare').addEventListener('click',async ()=>{
   const a=document.createElement('a'); a.href=url; a.download='karina-en-espanol-leccion.html';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),4000);
+});
+
+/* ==========================================================
+   BOOKMARKS — a place in a book, plus your own note
+   ========================================================== */
+function visibleSnippet(){
+  try{
+    const f=$('viewer').querySelector('iframe');
+    const d=f&&f.contentDocument; if(!d) return '';
+    const r=f.getBoundingClientRect();
+    // sample a few points down the visible column and take the first real text
+    for(const frac of [0.12,0.3,0.5,0.7]){
+      const el=d.elementFromPoint(Math.floor(r.width/2), Math.floor(r.height*frac));
+      const t=el&&(el.textContent||'').replace(/\s+/g,' ').trim();
+      if(t&&t.length>25) return t.slice(0,150);
+    }
+  }catch(e){}
+  return '';
+}
+
+$('markBtn').addEventListener('click', async ()=>{
+  if(!rendition||!current){ toast('Open a book first.'); return; }
+  let loc=null;
+  try{ loc=rendition.currentLocation(); }catch(e){}
+  if(!loc||!loc.start){ toast('Could not read this position.'); return; }
+
+  const note=prompt('Nota para este marcador (opcional):','');
+  if(note===null) return;                        // cancelled
+
+  let pct=0;
+  try{ pct=book.locations.percentageFromCfi(loc.start.cfi)||0; }catch(e){}
+
+  const rec={
+    id:'m_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+    bookId:current.id, book:current.title||current.name,
+    cfi:loc.start.cfi, pct, note:(note||'').trim(),
+    snippet:visibleSnippet(), savedAt:Date.now()
+  };
+  try{ await putMark(rec); toast('<b>Marcador guardado.</b>'); }
+  catch(e){ toast('<b>No se pudo guardar el marcador.</b>'); }
+});
+
+$('markListBtn').addEventListener('click',()=>{ show('bookmarks'); renderMarks(); });
+$('bmBack').addEventListener('click',()=>{ show('shelf'); renderShelf(); });
+
+async function renderMarks(){
+  let marks=[]; try{ marks=await allMarks(); }catch(e){}
+  marks.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+  const list=$('bmList');
+  if(!marks.length){
+    list.innerHTML='<div class="nb-empty"><div class="big">Sin marcadores</div>'+
+      '<p>Mientras lees, toca <b>&#9873;</b> arriba para guardar el punto donde est&aacute;s, '+
+      'con una nota tuya si quieres.</p></div>';
+    return;
+  }
+  list.innerHTML=marks.map(m=>
+    '<div class="card">'+
+      '<span class="card-x" data-del="'+esc(m.id)+'">&times;</span>'+
+      '<div class="card-top"><span class="card-term">'+esc(m.book||'')+'</span>'+
+        '<span class="card-tag">'+Math.round((m.pct||0)*100)+'%</span></div>'+
+      (m.note?'<div class="bm-note">'+esc(m.note)+'</div>':'')+
+      (m.snippet?'<div class="bm-snip">'+esc(m.snippet)+'\u2026</div>':'')+
+      '<div class="card-meta">'+timeAgo(m.savedAt)+'</div>'+
+      '<span class="bm-go" data-go="'+esc(m.id)+'">Ir a este punto &rsaquo;</span>'+
+    '</div>').join('');
+
+  list.querySelectorAll('[data-del]').forEach(x=>x.addEventListener('click', async ()=>{
+    if(!confirm('¿Borrar este marcador?')) return;
+    await delMark(x.getAttribute('data-del')).catch(()=>{});
+    renderMarks();
+  }));
+  list.querySelectorAll('[data-go]').forEach(x=>x.addEventListener('click', async ()=>{
+    const m=marks.find(k=>k.id===x.getAttribute('data-go'));
+    if(m) jumpTo(m.bookId, m.cfi);
+  }));
+}
+
+async function jumpTo(bookId, cfi){
+  const rec=await getBook(bookId).catch(()=>null);
+  if(!rec){ toast('<b>Ese libro ya no est\u00e1 en tu estante.</b>'); return; }
+  current=rec;
+  $('rTitle').textContent=rec.title||rec.name;
+  show('reader');
+  requestAnimationFrame(()=>renderBook(Object.assign({},rec,{cfi})));
+}
+
+/* ==========================================================
+   BUNDLED LIBRARY — books shipped alongside the app so they
+   can always be re-added, even if this phone clears storage
+   ========================================================== */
+async function loadBundled(){
+  let manifest=null;
+  try{
+    const r=await fetch('books.json',{cache:'no-store'});
+    if(!r.ok) return;
+    manifest=await r.json();
+  }catch(e){ return; }
+  if(!manifest||!manifest.books||!manifest.books.length) return;
+
+  let have=[]; try{ have=await allBooks(); }catch(e){}
+  const haveNames=new Set(have.map(b=>(b.name||'').toLowerCase()));
+  const missing=manifest.books.filter(b=>!haveNames.has((b.file||'').toLowerCase()));
+
+  const wrap=$('bundledWrap');
+  if(!missing.length){ wrap.classList.remove('show'); wrap.innerHTML=''; return; }
+
+  wrap.innerHTML='<div class="bundled-h">Biblioteca compartida</div>'+
+    missing.map(b=>'<button class="bundled" data-file="'+esc(b.file)+'">'+
+      '<div class="spine"></div>'+
+      '<div class="book-meta"><div class="book-title">'+esc(b.title||b.file)+'</div>'+
+      (b.author?'<div class="book-sub">'+esc(b.author)+'</div>':'')+'</div>'+
+      '<span class="get">A&ntilde;adir</span></button>').join('');
+  wrap.classList.add('show');
+
+  wrap.querySelectorAll('[data-file]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const file=el.getAttribute('data-file');
+      el.querySelector('.get').textContent='…';
+      try{
+        const r=await fetch(file,{cache:'no-store'});
+        if(!r.ok) throw new Error('missing');
+        const buf=await r.arrayBuffer();
+        await addBook(file, buf);
+      }catch(e){
+        toast('<b>No se pudo descargar ese libro.</b>');
+        el.querySelector('.get').textContent='A\u00f1adir';
+      }
+    });
+  });
+}
+
+/* ==========================================================
+   BACKUP — notebook, bookmarks and reading positions
+   ========================================================== */
+$('bkExport').addEventListener('click', async ()=>{
+  let notes=[], marks=[], books=[];
+  try{ notes=await allNotes(); }catch(e){}
+  try{ marks=await allMarks(); }catch(e){}
+  try{ books=await allBooks(); }catch(e){}
+  const payload={
+    app:'karina-en-espanol', version:VERSION, exportedAt:new Date().toISOString(),
+    notes, marks,
+    positions: books.map(b=>({ name:b.name, title:b.title, cfi:b.cfi, pct:b.pct,
+                               lastReadAt:b.lastReadAt }))
+  };
+  const txt=JSON.stringify(payload,null,2);
+  const name='karina-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  const file=new File([txt],name,{type:'application/json'});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Backup'}); return;
+    }
+  }catch(e){}
+  const url=URL.createObjectURL(new Blob([txt],{type:'application/json'}));
+  const a=document.createElement('a'); a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+});
+
+$('bkImport').addEventListener('click',()=>$('bkFile').click());
+$('bkFile').addEventListener('change',(e)=>{
+  const f=e.target.files[0]; e.target.value='';
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=async ()=>{
+    let data=null;
+    try{ data=JSON.parse(r.result); }catch(err){ toast('<b>That file is not a backup.</b>'); return; }
+    if(!data||(!data.notes&&!data.marks)){ toast('<b>That file is not a backup.</b>'); return; }
+    let n=0,m=0,p=0;
+    for(const note of (data.notes||[])){ try{ await putNote(note); n++; }catch(e){} }
+    for(const mark of (data.marks||[])){ try{ await putMark(mark); m++; }catch(e){} }
+    // positions match by filename, only if that book is on this phone
+    if(data.positions){
+      let books=[]; try{ books=await allBooks(); }catch(e){}
+      for(const pos of data.positions){
+        const b=books.find(x=>(x.name||'')===pos.name);
+        if(b && pos.cfi){ b.cfi=pos.cfi; b.pct=pos.pct||0;
+          try{ await putBook(b); p++; }catch(e){} }
+      }
+    }
+    toast('<b>Restored.</b> '+n+' notes, '+m+' bookmarks, '+p+' positions.', 5000);
+    renderShelf();
+  };
+  r.readAsText(f);
 });
 
 /* ---------- settings screen ---------- */
@@ -1531,8 +1783,15 @@ async function updateStorage(){
    BUILD LOG — bump VERSION and add an entry when deploying.
    The newest entry shows automatically after an update.
    ========================================================== */
-const VERSION='1.8.3';
+const VERSION='1.9.0';
 const RELEASES=[
+  { v:'1.9.0', d:'August 5, 2026', items:[
+    ['new','<b>Shared library.</b> Books kept alongside the app appear on the shelf ready to add, so they can always be restored \u2014 and both phones get the same ones.'],
+    ['new','<b>Bookmarks.</b> Tap \u2691 while reading to save your place with a note of your own. They live in their own list, and tapping one jumps straight back.'],
+    ['new','<b>Backup and restore.</b> Save your notebook, bookmarks and reading positions to a file, and restore them on this phone or the other one.'],
+    ['new','<b>Session spend.</b> A quiet running total of lookups and cost, shown in the translation panel and in Settings.'],
+    ['fix','Deleting a saved word now asks first.']
+  ]},
   { v:'1.8.3', d:'August 5, 2026', items:[
     ['fix','<b>Words near the edges could not be selected.</b> The page-turn areas sat on top of the text. The book column now stops short of the edges, so those areas are real empty margins and every word is selectable.']
   ]},
@@ -1659,6 +1918,7 @@ applyNight();
 /* ---------- go ---------- */
 show('shelf');
 renderShelf();
+loadBundled();
 updateStorage();
 
 /* hold the launch screen briefly so it reads as a launch, not a flicker */
