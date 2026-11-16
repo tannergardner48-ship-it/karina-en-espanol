@@ -1,6 +1,19 @@
 {
   "books": [
-    { "file": "el-Alquimista.epub", "title": "El Alquimista", "author": "Paulo Coelho" },
-    { "file": "como-agua.epub", "title": "Como agua para chocolate", "author": "Laura Esquivel" }
+    {
+      "file": "El-alquimista.epub",
+      "title": "El Alquimista",
+      "author": "Paulo Coelho"
+    },
+    {
+      "file": "como-agua.epub",
+      "title": "Como agua para chocolate",
+      "author": "Laura Esquivel"
+    },
+    {
+      "file": "el-diario-de-karina.epub",
+      "title": "El diario de Karina",
+      "author": "Cuentos de la casa"
+    }
   ]
 }
